@@ -4,6 +4,8 @@ Web app for writing a story one part at a time with either:
 - a local Ollama model, or
 - an OpenAI-compatible API endpoint.
 
+![Screenshot](Screenshot 1.png)
+
 ## Features
 - Generate the next story part from:
   - optional story overview
