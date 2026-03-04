@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Story Writer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel controls">
+        <div class="top-row">
+          <h1>Story Writer</h1>
+          <a class="link-button" href="/settings">Settings</a>
+        </div>
+        <p class="subtitle">Generate a story one part at a time.</p>
+        <p id="settingsSummary" class="helper"></p>
+
+        <label for="title">Story Title (Optional)</label>
+        <input id="title" type="text" placeholder="Optional title" />
+        <div class="inline-actions">
+          <button id="generateTitleBtn" class="secondary inline-button">Generate Title With LLM</button>
+        </div>
+
+        <label for="storyOverview">Story Overview (Optional)</label>
+        <textarea id="storyOverview" rows="4" placeholder="Optional high-level story idea..."></textarea>
+
+        <label for="storyArcInstruction">Story Arc Instruction</label>
+        <textarea
+          id="storyArcInstruction"
+          rows="4"
+          placeholder="Optional long-term guidance for the plot arc..."
+        ></textarea>
+        <div class="inline-actions">
+          <button id="generateArcBtn" class="secondary inline-button">Generate Story Arc With LLM</button>
+        </div>
+
+        <label for="paragraphLimit">Paragraph Limit For Next Part</label>
+        <input id="paragraphLimit" type="number" min="1" value="2" />
+
+        <div class="button-row three-col">
+          <button id="saveBtn" class="secondary">Save Story</button>
+          <button id="downloadBtn" class="secondary">Download Story</button>
+          <label for="loadInput" class="file-button secondary">Load Story</label>
+          <input id="loadInput" type="file" accept=".json" />
+        </div>
+        <div class="button-row one-col">
+          <button id="newStoryBtn" class="secondary">New Story (Clear Everything)</button>
+        </div>
+
+        <p id="status" class="status">Ready.</p>
+      </section>
+
+      <section class="panel output">
+        <div class="output-header">
+          <h2 id="renderTitle">Untitled Story</h2>
+          <button id="clearStoryBtn" class="danger">Clear Story</button>
+        </div>
+        <label for="storySoFar">Story So Far (Editable)</label>
+        <textarea
+          id="storySoFar"
+          class="story-container story-editor"
+          placeholder="Your story text will appear here. You can edit it directly."
+        ></textarea>
+
+        <label for="whatHappensNext">What Happens Next</label>
+        <textarea
+          id="whatHappensNext"
+          rows="5"
+          placeholder="Describe how the next part should unfold..."
+        ></textarea>
+
+        <div class="button-row three-col">
+          <button id="generateBtn">Generate Next Part</button>
+          <button id="regenerateBtn" class="secondary">Re-Generate Last Part</button>
+          <button id="clearNextBtn" class="secondary">Clear Next Prompt</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

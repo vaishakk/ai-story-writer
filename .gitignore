@@ -1,0 +1,59 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+env/
+# Python 3.13+ venv will create its own .gitignore file by default, but these explicit entries don't hurt.
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*,cover
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Editors and IDEs
+.idea/  # For PyCharm
+.vscode/ # For VS Code
+*.swp
+*.sublime-workspace
+
+# OS and miscellaneous
+.DS_Store # macOS specific
+.project
+.settings
+.factorypath
+.pydevproject
+
+# Specific to testing frameworks, e.g., Ruff
+.ruff_cache
+
+##Samples
+*.json

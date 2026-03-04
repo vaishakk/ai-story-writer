@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Story Writer Settings</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="settings-layout">
+      <section class="panel settings-panel">
+        <div class="top-row">
+          <h1>LLM Settings</h1>
+          <a class="link-button" href="/">Back To Writer</a>
+        </div>
+        <p class="subtitle">Select a local model provider or API configuration.</p>
+
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="ollama">Ollama (Local)</option>
+          <option value="openai_compatible">OpenAI-Compatible API</option>
+        </select>
+
+        <div id="ollamaFields">
+          <label for="ollamaEndpoint">Ollama Endpoint</label>
+          <input id="ollamaEndpoint" type="text" value="http://localhost:11434" />
+
+          <label for="ollamaModel">Ollama Model</label>
+          <input id="ollamaModel" type="text" value="llama3.1" />
+        </div>
+
+        <div id="apiFields">
+          <label for="apiBaseUrl">API Base URL</label>
+          <input id="apiBaseUrl" type="text" value="https://api.openai.com/v1" />
+
+          <label for="apiModel">API Model</label>
+          <input id="apiModel" type="text" value="gpt-4o-mini" />
+
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" type="password" placeholder="Optional for local API, required for hosted API" />
+        </div>
+
+        <div class="button-row one-col">
+          <button id="saveSettingsBtn">Save Settings</button>
+        </div>
+
+        <p id="settingsStatus" class="status">Ready.</p>
+      </section>
+    </main>
+
+    <script src="/static/settings.js"></script>
+  </body>
+</html>
