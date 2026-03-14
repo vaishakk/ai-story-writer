@@ -16,8 +16,10 @@ Web app for writing a story one part at a time with either:
 - Keep story context across parts
 - Save story locally as JSON in this format:
   - `format`, `title`, `storyOverview`, `storySoFar`, `whatHappensNext`, `storyArcInstruction`, `paragraphLimit`
-- Load a previously saved JSON story
+- Load a previously saved JSON story (including compatible alternate JSON shapes)
+- Stop an in-progress generation stream
 - Separate `/settings` page for model/API configuration
+- Persist settings (including API key) to a local settings file
 
 ## Requirements
 - Python 3.10+
@@ -42,4 +44,3 @@ Configure model settings at:
 ## Notes
 - `title` and `storyOverview` are optional.
 - The app requests an exact paragraph count and applies a fallback paragraph normalizer if the model response does not match.
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Dict, Iterator, List
 
 import requests
@@ -13,6 +14,72 @@ DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.1"
 DEFAULT_API_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_API_MODEL = "gpt-4o-mini"
+SETTINGS_FILE = Path(app.root_path) / ".story_writer_settings.json"
+
+
+def default_settings() -> Dict[str, str]:
+    return {
+        "provider": "ollama",
+        "ollamaEndpoint": DEFAULT_OLLAMA_ENDPOINT,
+        "ollamaModel": DEFAULT_OLLAMA_MODEL,
+        "apiBaseUrl": DEFAULT_API_BASE_URL,
+        "apiModel": DEFAULT_API_MODEL,
+        "apiKey": "",
+    }
+
+
+def normalize_settings_payload(raw: Any) -> Dict[str, str]:
+    defaults = default_settings()
+    source = raw if isinstance(raw, dict) else {}
+
+    provider = str(source.get("provider") or defaults["provider"]).strip().lower()
+    if provider not in {"ollama", "openai_compatible"}:
+        provider = defaults["provider"]
+
+    return {
+        "provider": provider,
+        "ollamaEndpoint": str(source.get("ollamaEndpoint") or defaults["ollamaEndpoint"]).strip(),
+        "ollamaModel": str(source.get("ollamaModel") or defaults["ollamaModel"]).strip(),
+        "apiBaseUrl": str(source.get("apiBaseUrl") or defaults["apiBaseUrl"]).strip(),
+        "apiModel": str(source.get("apiModel") or defaults["apiModel"]).strip(),
+        "apiKey": str(source.get("apiKey") or "").strip(),
+    }
+
+
+def load_persisted_settings() -> Dict[str, str]:
+    defaults = default_settings()
+    try:
+        raw = SETTINGS_FILE.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return defaults
+    except OSError:
+        return defaults
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return defaults
+
+    return normalize_settings_payload({**defaults, **(parsed if isinstance(parsed, dict) else {})})
+
+
+def save_persisted_settings(settings: Dict[str, str]) -> None:
+    SETTINGS_FILE.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    try:
+        SETTINGS_FILE.chmod(0o600)
+    except OSError:
+        pass
+
+
+def resolve_settings(raw: Any) -> Dict[str, str]:
+    persisted = load_persisted_settings()
+    if not isinstance(raw, dict):
+        return persisted
+
+    resolved = normalize_settings_payload({**persisted, **raw})
+    if not resolved.get("apiKey"):
+        resolved["apiKey"] = persisted.get("apiKey", "")
+    return resolved
 
 
 def split_sentences(text: str) -> List[str]:
@@ -353,6 +420,31 @@ def settings():
     return render_template("settings.html")
 
 
+@app.get("/api/settings")
+def api_get_settings():
+    return jsonify(load_persisted_settings())
+
+
+@app.post("/api/settings")
+def api_save_settings():
+    data = request.get_json(silent=True) or {}
+    settings = normalize_settings_payload(data)
+
+    if settings["provider"] == "ollama":
+        if not settings["ollamaEndpoint"] or not settings["ollamaModel"]:
+            return jsonify({"error": "Ollama endpoint and model are required."}), 400
+    else:
+        if not settings["apiBaseUrl"] or not settings["apiModel"]:
+            return jsonify({"error": "API base URL and model are required."}), 400
+
+    try:
+        save_persisted_settings(settings)
+    except OSError as exc:
+        return jsonify({"error": f"Failed to save settings: {exc}"}), 500
+
+    return jsonify({"settings": settings})
+
+
 @app.post("/api/generate-part")
 def api_generate_part():
     data = request.get_json(silent=True) or {}
@@ -361,7 +453,7 @@ def api_generate_part():
     story_so_far = (data.get("storySoFar") or "").strip()
     what_happens_next = (data.get("whatHappensNext") or "").strip()
     story_arc_instruction = (data.get("storyArcInstruction") or "").strip()
-    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    settings = resolve_settings(data.get("settings"))
 
     try:
         paragraph_limit = int(data.get("paragraphLimit", 2))
@@ -401,7 +493,7 @@ def api_generate_part_stream():
     story_so_far = (data.get("storySoFar") or "").strip()
     what_happens_next = (data.get("whatHappensNext") or "").strip()
     story_arc_instruction = (data.get("storyArcInstruction") or "").strip()
-    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    settings = resolve_settings(data.get("settings"))
 
     try:
         paragraph_limit = int(data.get("paragraphLimit", 2))
@@ -460,7 +552,7 @@ def api_generate_metadata():
     story_overview = (data.get("storyOverview") or "").strip()
     story_so_far = (data.get("storySoFar") or "").strip()
     what_happens_next = (data.get("whatHappensNext") or "").strip()
-    settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+    settings = resolve_settings(data.get("settings"))
 
     if field not in {"title", "storyArcInstruction"}:
         return jsonify({"error": "Field must be title or storyArcInstruction."}), 400

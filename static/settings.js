@@ -21,7 +21,7 @@ const els = {
   settingsStatus: document.getElementById("settingsStatus"),
 };
 
-function loadSettings() {
+function loadSettingsFromCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     return { ...DEFAULT_SETTINGS, ...parsed };
@@ -30,8 +30,42 @@ function loadSettings() {
   }
 }
 
-function saveSettings(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+function saveSettingsToCache(settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+async function loadSettings() {
+  try {
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error("Could not load settings from server.");
+    }
+    const serverSettings = await res.json();
+    const normalized = { ...DEFAULT_SETTINGS, ...(serverSettings || {}) };
+    saveSettingsToCache(normalized);
+    return normalized;
+  } catch {
+    return loadSettingsFromCache();
+  }
+}
+
+async function saveSettings(settings) {
+  const res = await fetch("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || "Could not save settings.");
+  }
+  const normalized = { ...DEFAULT_SETTINGS, ...(data.settings || settings) };
+  saveSettingsToCache(normalized);
+  return normalized;
 }
 
 function setStatus(text, isError = false) {
@@ -45,8 +79,7 @@ function toggleProviderSections(provider) {
   els.apiFields.classList.toggle("hidden", !useApi);
 }
 
-function hydrateForm() {
-  const settings = loadSettings();
+function hydrateFormValues(settings) {
   els.provider.value = settings.provider;
   els.ollamaEndpoint.value = settings.ollamaEndpoint;
   els.ollamaModel.value = settings.ollamaModel;
@@ -71,7 +104,7 @@ els.provider.addEventListener("change", () => {
   toggleProviderSections(els.provider.value);
 });
 
-els.saveSettingsBtn.addEventListener("click", () => {
+els.saveSettingsBtn.addEventListener("click", async () => {
   const settings = collectForm();
   if (settings.provider === "ollama" && (!settings.ollamaEndpoint || !settings.ollamaModel)) {
     setStatus("Ollama endpoint and model are required.", true);
@@ -82,8 +115,23 @@ els.saveSettingsBtn.addEventListener("click", () => {
     return;
   }
 
-  saveSettings(settings);
-  setStatus("Settings saved.");
+  els.saveSettingsBtn.disabled = true;
+  try {
+    const saved = await saveSettings(settings);
+    hydrateFormValues(saved);
+    setStatus("Settings saved permanently.");
+  } catch (err) {
+    setStatus(String(err.message || err), true);
+  } finally {
+    els.saveSettingsBtn.disabled = false;
+  }
 });
 
-hydrateForm();
+async function init() {
+  setStatus("Loading settings...");
+  const settings = await loadSettings();
+  hydrateFormValues(settings);
+  setStatus("Ready.");
+}
+
+init();

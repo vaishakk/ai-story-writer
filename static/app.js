@@ -21,6 +21,7 @@ const els = {
   generateTitleBtn: document.getElementById("generateTitleBtn"),
   generateArcBtn: document.getElementById("generateArcBtn"),
   generateBtn: document.getElementById("generateBtn"),
+  stopBtn: document.getElementById("stopBtn"),
   regenerateBtn: document.getElementById("regenerateBtn"),
   clearNextBtn: document.getElementById("clearNextBtn"),
   saveBtn: document.getElementById("saveBtn"),
@@ -37,14 +38,43 @@ const state = {
   storyBase: "",
   generatedParts: [],
   isGenerating: false,
+  activeAbortController: null,
+  settings: { ...DEFAULT_SETTINGS },
 };
 
-function loadSettings() {
+function loadSettingsFromCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettingsToCache(settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function getSettings() {
+  return { ...DEFAULT_SETTINGS, ...(state.settings || {}) };
+}
+
+async function refreshSettingsFromServer() {
+  try {
+    const res = await fetch("/api/settings", { cache: "no-store" });
+    if (!res.ok) {
+      return;
+    }
+    const serverSettings = await res.json();
+    state.settings = { ...DEFAULT_SETTINGS, ...(serverSettings || {}) };
+    saveSettingsToCache(state.settings);
+    els.settingsSummary.textContent = summarizeSettings(getSettings());
+  } catch {
+    // Use cached settings when server retrieval fails.
   }
 }
 
@@ -86,6 +116,7 @@ function updateActionButtons() {
   els.generateTitleBtn.disabled = isGenerating || !enoughStory;
   els.generateArcBtn.disabled = isGenerating || !enoughStory;
   els.generateBtn.disabled = isGenerating;
+  els.stopBtn.disabled = !isGenerating;
   els.regenerateBtn.disabled = isGenerating || !hasGeneratedPart;
   els.clearNextBtn.disabled = isGenerating;
   els.clearStoryBtn.disabled = isGenerating;
@@ -193,7 +224,7 @@ function render({ scrollToEnd = false } = {}) {
 
 async function generateMetadataField(field, buttonEl) {
   const payload = getStoryPayload();
-  const settings = loadSettings();
+  const settings = getSettings();
 
   if (countStoryParagraphs() < MIN_PARAGRAPHS_FOR_METADATA) {
     setStatus(`Generate at least ${MIN_PARAGRAPHS_FOR_METADATA} story paragraphs first.`, true);
@@ -267,9 +298,9 @@ function parseSseEventBlock(rawBlock) {
   }
 }
 
-async function requestGeneratedPartStream(storySoFarForRequest, onChunk) {
+async function requestGeneratedPartStream(storySoFarForRequest, onChunk, signal) {
   const payload = getStoryPayload();
-  const settings = loadSettings();
+  const settings = getSettings();
 
   if (!payload.whatHappensNext) {
     throw new Error("Describe what happens next before generating.");
@@ -281,6 +312,7 @@ async function requestGeneratedPartStream(storySoFarForRequest, onChunk) {
   const res = await fetch("/api/generate-part-stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal,
     body: JSON.stringify({
       ...payload,
       storySoFar: storySoFarForRequest,
@@ -376,9 +408,22 @@ async function requestGeneratedPartStream(storySoFarForRequest, onChunk) {
   return output;
 }
 
+function isAbortError(err) {
+  return Boolean(err && (err.name === "AbortError" || String(err.message || "").includes("aborted")));
+}
+
+function stopGeneration() {
+  if (!state.isGenerating || !state.activeAbortController) {
+    return;
+  }
+  setStatus("Stopping generation...");
+  state.activeAbortController.abort();
+}
+
 async function generateNextPart() {
   setStatus("Generating next part...");
   state.isGenerating = true;
+  state.activeAbortController = new AbortController();
   updateActionButtons();
   state.generatedParts.push("");
   const partIndex = state.generatedParts.length - 1;
@@ -386,21 +431,32 @@ async function generateNextPart() {
 
   try {
     const contextBeforeNewPart = buildStoryText(state.storyBase, state.generatedParts.slice(0, -1));
-    const newPart = await requestGeneratedPartStream(contextBeforeNewPart, (partialText) => {
-      state.generatedParts[partIndex] = partialText;
-      render({ scrollToEnd: true });
-    });
+    const newPart = await requestGeneratedPartStream(
+      contextBeforeNewPart,
+      (partialText) => {
+        state.generatedParts[partIndex] = partialText;
+        render({ scrollToEnd: true });
+      },
+      state.activeAbortController.signal
+    );
     state.generatedParts[partIndex] = newPart;
     render({ scrollToEnd: true });
     saveDraft();
     setStatus("Added the next story part.");
   } catch (err) {
+    const aborted = state.activeAbortController?.signal.aborted || isAbortError(err);
     if (!String(state.generatedParts[partIndex] || "").trim()) {
       state.generatedParts.splice(partIndex, 1);
       render();
     }
-    setStatus(String(err.message || err), true);
+    if (aborted) {
+      saveDraft();
+      setStatus("Generation stopped.");
+    } else {
+      setStatus(String(err.message || err), true);
+    }
   } finally {
+    state.activeAbortController = null;
     state.isGenerating = false;
     render();
   }
@@ -418,24 +474,35 @@ async function regenerateLastPart() {
 
   setStatus("Re-generating last part...");
   state.isGenerating = true;
+  state.activeAbortController = new AbortController();
   state.generatedParts[lastPartIndex] = "";
   render({ scrollToEnd: true });
 
   try {
-    const newPart = await requestGeneratedPartStream(contextWithoutLast, (partialText) => {
-      state.generatedParts[lastPartIndex] = partialText;
-      render({ scrollToEnd: true });
-    });
+    const newPart = await requestGeneratedPartStream(
+      contextWithoutLast,
+      (partialText) => {
+        state.generatedParts[lastPartIndex] = partialText;
+        render({ scrollToEnd: true });
+      },
+      state.activeAbortController.signal
+    );
     state.generatedParts[lastPartIndex] = newPart;
     render({ scrollToEnd: true });
     saveDraft();
     setStatus("Last part re-generated.");
   } catch (err) {
-    if (!String(state.generatedParts[lastPartIndex] || "").trim()) {
+    const aborted = state.activeAbortController?.signal.aborted || isAbortError(err);
+    if (!String(state.generatedParts[lastPartIndex] || "").trim() || aborted) {
       state.generatedParts[lastPartIndex] = originalPart;
     }
-    setStatus(String(err.message || err), true);
+    if (aborted) {
+      setStatus("Generation stopped.");
+    } else {
+      setStatus(String(err.message || err), true);
+    }
   } finally {
+    state.activeAbortController = null;
     state.isGenerating = false;
     render();
   }
@@ -496,29 +563,163 @@ function downloadStory() {
   setStatus("Story downloaded.");
 }
 
+function asCleanString(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).trim();
+  }
+  return "";
+}
+
+function toStringList(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return String(item).trim();
+      }
+      if (item && typeof item === "object") {
+        return asCleanString(item.text || item.content || item.body || item.story || item.paragraph);
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function pickFirstString(objects, keys) {
+  for (const obj of objects) {
+    if (!obj || typeof obj !== "object") {
+      continue;
+    }
+    for (const key of keys) {
+      const value = asCleanString(obj[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return "";
+}
+
+function pickFirstInteger(objects, keys, fallback = 2) {
+  for (const obj of objects) {
+    if (!obj || typeof obj !== "object") {
+      continue;
+    }
+    for (const key of keys) {
+      const parsed = Number.parseInt(String(obj[key] ?? ""), 10);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return fallback;
+}
+
+function extractStoryText(objects, rawData) {
+  const directText = pickFirstString(objects, [
+    "storySoFar",
+    "story",
+    "storyText",
+    "story_text",
+    "content",
+    "text",
+    "body",
+  ]);
+  if (directText) {
+    return directText;
+  }
+
+  for (const obj of objects) {
+    if (!obj || typeof obj !== "object") {
+      continue;
+    }
+    const parts = toStringList(obj.paragraphs || obj.parts || obj.generatedParts || obj.sections || obj.scenes);
+    if (!parts.length) {
+      continue;
+    }
+    const base = asCleanString(obj._storyBase || obj.storyBase || obj.baseStory || obj.base || obj.intro);
+    return [base, ...parts].filter(Boolean).join("\n\n").trim();
+  }
+
+  if (Array.isArray(rawData)) {
+    return toStringList(rawData).join("\n\n").trim();
+  }
+
+  return "";
+}
+
+function normalizeImportedStoryPayload(rawData) {
+  const root = rawData && typeof rawData === "object" ? rawData : {};
+  const objects = [root];
+  if (root && typeof root.data === "object") {
+    objects.push(root.data);
+  }
+  if (root && typeof root.payload === "object") {
+    objects.push(root.payload);
+  }
+  if (root && typeof root.story === "object") {
+    objects.push(root.story);
+  }
+
+  return {
+    title: pickFirstString(objects, ["title", "storyTitle", "name", "heading"]),
+    storyOverview: pickFirstString(objects, ["storyOverview", "overview", "summary", "description", "premise"]),
+    storySoFar: extractStoryText(objects, rawData),
+    whatHappensNext: pickFirstString(objects, [
+      "whatHappensNext",
+      "next",
+      "nextPrompt",
+      "next_step",
+      "prompt",
+      "continuationPrompt",
+    ]),
+    storyArcInstruction: pickFirstString(objects, [
+      "storyArcInstruction",
+      "storyArc",
+      "arcInstruction",
+      "arc",
+      "plotInstruction",
+      "longTermInstruction",
+    ]),
+    paragraphLimit: pickFirstInteger(objects, ["paragraphLimit", "paragraphCount", "paragraphsPerPart"], 2),
+  };
+}
+
 function loadStoryFromFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const data = JSON.parse(String(reader.result || "{}"));
-
-      if (String(data.format || "") !== STORY_FORMAT) {
-        throw new Error("Unsupported format. Expected ai-story-v1.");
+      const parsed = JSON.parse(String(reader.result || "{}"));
+      const imported = normalizeImportedStoryPayload(parsed);
+      const hasAnyField = Boolean(
+        imported.title ||
+          imported.storyOverview ||
+          imported.storySoFar ||
+          imported.whatHappensNext ||
+          imported.storyArcInstruction
+      );
+      if (!hasAnyField) {
+        throw new Error("No compatible story fields were found in this JSON file.");
       }
 
-      els.title.value = String(data.title || "");
-      els.storyOverview.value = String(data.storyOverview || "");
-      els.whatHappensNext.value = String(data.whatHappensNext || "");
-      els.storyArcInstruction.value = String(data.storyArcInstruction || "");
-      const limit = Number.parseInt(String(data.paragraphLimit || "2"), 10);
-      els.paragraphLimit.value = Number.isInteger(limit) && limit > 0 ? String(limit) : "2";
+      els.title.value = imported.title;
+      els.storyOverview.value = imported.storyOverview;
+      els.whatHappensNext.value = imported.whatHappensNext;
+      els.storyArcInstruction.value = imported.storyArcInstruction;
+      els.paragraphLimit.value = String(imported.paragraphLimit);
 
-      state.storyBase = String(data.storySoFar || "").trim();
+      state.storyBase = imported.storySoFar;
       state.generatedParts = [];
 
       render({ scrollToEnd: true });
       saveDraft();
-      setStatus("Story loaded.");
+      setStatus("Story loaded (format auto-detected).");
     } catch (err) {
       setStatus(`Could not load file: ${String(err.message || err)}`, true);
     }
@@ -547,6 +748,7 @@ function newStory() {
 }
 
 els.generateBtn.addEventListener("click", generateNextPart);
+els.stopBtn.addEventListener("click", stopGeneration);
 els.regenerateBtn.addEventListener("click", regenerateLastPart);
 els.generateTitleBtn.addEventListener("click", () => {
   generateMetadataField("title", els.generateTitleBtn);
@@ -591,6 +793,8 @@ els.storySoFar.addEventListener("input", () => {
   saveDraft();
 });
 
-els.settingsSummary.textContent = summarizeSettings(loadSettings());
+state.settings = loadSettingsFromCache();
+els.settingsSummary.textContent = summarizeSettings(getSettings());
+refreshSettingsFromServer();
 restoreDraft();
 render({ scrollToEnd: true });

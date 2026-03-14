@@ -147,6 +147,10 @@ select:focus {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.button-row.four-col {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 button,
 .file-button {
   display: inline-flex;
