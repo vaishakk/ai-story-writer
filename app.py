@@ -140,7 +140,7 @@ def build_story_part_messages(
 ) -> List[Dict[str, str]]:
     system_prompt = (
         "You are a creative fiction writer. Produce story prose only, with no markdown, no headings, "
-        "and no explanations."
+        "and no explanations. Treat the user's 'How the next part should unfold' as a hard scope boundary."
     )
     user_prompt = f"""
 Story overview:
@@ -157,6 +157,11 @@ Story arc instruction:
 
 Write the next story part in exactly {paragraph_limit} paragraphs.
 Each paragraph should be meaningful and continue naturally from the prior story.
+Maintain internal story continuity by carrying unresolved goals, tensions, and character dynamics from the existing story arc.
+Use "How the next part should unfold" as strict scope for this part:
+- Cover only those requested beats.
+- Do not resolve or narrate events that happen after those beats.
+- End at a natural stopping point right after the requested beats, leaving room for the next part.
 Do not include labels like "Paragraph 1" or "Part 2".
 """.strip()
     return [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
@@ -394,7 +399,12 @@ def generate_story_part(
         )
         repair_prompt = f"""
 Rewrite the following text into exactly {paragraph_limit} paragraphs while preserving the same events, tone, and details.
+Keep "How the next part should unfold" as a hard scope boundary. Remove any events that go past it.
+Do not narrate beyond those requested beats.
 Return only the rewritten story text.
+
+How the next part should unfold:
+{what_happens_next.strip()}
 
 Text to rewrite:
 {first_output}

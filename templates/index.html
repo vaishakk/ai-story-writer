@@ -19,7 +19,7 @@
         <label for="title">Story Title (Optional)</label>
         <input id="title" type="text" placeholder="Optional title" />
         <div class="inline-actions">
-          <button id="generateTitleBtn" class="secondary inline-button">Generate Title With LLM</button>
+          <button id="generateTitleBtn" class="secondary inline-button">Generate Title</button>
         </div>
 
         <label for="storyOverview">Story Overview (Optional)</label>
@@ -32,7 +32,7 @@
           placeholder="Optional long-term guidance for the plot arc..."
         ></textarea>
         <div class="inline-actions">
-          <button id="generateArcBtn" class="secondary inline-button">Generate Story Arc With LLM</button>
+          <button id="generateArcBtn" class="secondary inline-button">Generate Arc</button>
         </div>
 
         <label for="paragraphLimit">Paragraph Limit For Next Part</label>
@@ -45,7 +45,7 @@
           <input id="loadInput" type="file" accept=".json" />
         </div>
         <div class="button-row one-col">
-          <button id="newStoryBtn" class="secondary">New Story (Clear Everything)</button>
+          <button id="newStoryBtn" class="secondary">New Story</button>
         </div>
 
         <p id="status" class="status">Ready.</p>
@@ -71,10 +71,10 @@
         ></textarea>
 
         <div class="button-row four-col">
-          <button id="generateBtn">Generate Next Part</button>
+          <button id="generateBtn">Generate</button>
           <button id="stopBtn" class="secondary">Stop</button>
-          <button id="regenerateBtn" class="secondary">Re-Generate Last Part</button>
-          <button id="clearNextBtn" class="secondary">Clear Next Prompt</button>
+          <button id="regenerateBtn" class="secondary">Regenerate</button>
+          <button id="clearNextBtn" class="secondary">Clear Prompt</button>
         </div>
       </section>
     </main>
